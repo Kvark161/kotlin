@@ -22,7 +22,9 @@ import com.intellij.openapi.util.io.FileUtil
 import com.intellij.psi.PsiDocumentManager
 import junit.framework.TestCase
 import org.jetbrains.kotlin.idea.AbstractCopyPasteTest
-import org.jetbrains.kotlin.idea.refactoring.MoveDeclarationsCopyPasteProcessor
+import org.jetbrains.kotlin.idea.refactoring.cutPaste.MoveDeclarationsEditorCookie
+import org.jetbrains.kotlin.idea.refactoring.cutPaste.MoveDeclarationsIntentionAction
+import org.jetbrains.kotlin.idea.refactoring.cutPaste.MoveDeclarationsProcessor
 import org.jetbrains.kotlin.idea.test.PluginTestCaseBase
 import org.jetbrains.kotlin.idea.test.dumpTextWithErrors
 import org.jetbrains.kotlin.psi.KtFile
@@ -56,31 +58,32 @@ abstract class AbstractMoveOnCutPasteTest : AbstractCopyPasteTest() {
             OptimizeImportsProcessor(project, sourcePsiFile).run()
         }
 
-        MoveDeclarationsCopyPasteProcessor.ACTIVATE_IN_TEST_MODE = true
-        try {
-            val targetFileName = sourceFileName.replace(".kt", ".to.kt")
-            val targetPsiFile = configureTargetFile(targetFileName)
-            performNotWriteEditorAction(IdeActions.ACTION_PASTE)
+        editor.putUserData(MoveDeclarationsEditorCookie.KEY, null) // because editor is reused
+
+        val targetFileName = sourceFileName.replace(".kt", ".to.kt")
+        val targetPsiFile = configureTargetFile(targetFileName)
+        performNotWriteEditorAction(IdeActions.ACTION_PASTE)
+
+        val shouldBeAvailable = InTextDirectivesUtils.getPrefixedBoolean(testFileText, IS_AVAILABLE_DIRECTIVE) ?: true
+        val cookie = editor.getUserData(MoveDeclarationsEditorCookie.KEY)
+        val processor = cookie?.let { MoveDeclarationsProcessor.build(editor, cookie) }
+
+        TestCase.assertEquals(shouldBeAvailable, processor != null)
+
+        if (processor != null) {
+            processor.performRefactoring()
+
             PsiDocumentManager.getInstance(project).commitAllDocuments()
 
-            val shouldBeAvailable = InTextDirectivesUtils.getPrefixedBoolean(testFileText, IS_AVAILABLE_DIRECTIVE) ?: true
-
-            TestCase.assertEquals(shouldBeAvailable, MoveDeclarationsCopyPasteProcessor.REFACTORING_PERFORMED)
-
-            if (shouldBeAvailable) {
-                if (dependencyPsiFile != null) {
-                    KotlinTestUtils.assertEqualsToFile(File(BASE_PATH, dependencyFileName.replace(".kt", ".expected.kt")),
-                                                       dependencyPsiFile.dumpTextWithErrors())
-                }
-
-                KotlinTestUtils.assertEqualsToFile(File(BASE_PATH, sourceFileName.replace(".kt", ".expected.kt")),
-                                                   sourcePsiFile.dumpTextWithErrors())
-                KotlinTestUtils.assertEqualsToFile(File(BASE_PATH, targetFileName.replace(".kt", ".expected.kt")),
-                                                   targetPsiFile.dumpTextWithErrors())
+            if (dependencyPsiFile != null) {
+                KotlinTestUtils.assertEqualsToFile(File(BASE_PATH, dependencyFileName.replace(".kt", ".expected.kt")),
+                                                   dependencyPsiFile.dumpTextWithErrors())
             }
-        }
-        finally {
-            MoveDeclarationsCopyPasteProcessor.ACTIVATE_IN_TEST_MODE = false
+
+            KotlinTestUtils.assertEqualsToFile(File(BASE_PATH, sourceFileName.replace(".kt", ".expected.kt")),
+                                               sourcePsiFile.dumpTextWithErrors())
+            KotlinTestUtils.assertEqualsToFile(File(BASE_PATH, targetFileName.replace(".kt", ".expected.kt")),
+                                               targetPsiFile.dumpTextWithErrors())
         }
     }
 }
