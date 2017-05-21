@@ -48,7 +48,7 @@ internal class DescriptorRendererOptionsImpl : DescriptorRendererOptions {
                     this,
                     PropertyReference1Impl(DescriptorRendererOptionsImpl::class, field.name, "get" + field.name.capitalize())
             )
-            field.set(copy, copy.property(value as Any))
+            field.set(copy, copy.property(value))
         }
 
         return copy
